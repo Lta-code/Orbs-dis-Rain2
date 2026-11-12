@@ -1,0 +1,22 @@
+# Bảo mật: Tuyệt đối không đẩy file chứa Token thật lên GitHub
+.env
+.env.*
+!.env.example
+
+# Thư mục thư viện & build
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# File nội bộ / bản thiết kế AI
+FLASH_BLUEPRINT.md
+injector.js
+payload.js
+
+# Hệ điều hành & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
