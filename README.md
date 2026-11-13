@@ -1,4 +1,4 @@
-# 🔮 Discord Quest Auto Completer (Safe Edition)
+# 🔮 Rain2 - Discord Quest Auto Completer (Safe Edition)
 
 Công cụ tự động nhận (Accept/Enroll) và hoàn thành 100% tiến độ tất cả nhiệm vụ **Discord Quests** (Xem Video, Chơi Game Desktop/Console/Mobile, Stream...) với giao diện bảng điều khiển trực tiếp (Live CLI Dashboard).
 

@@ -11,7 +11,9 @@ yarn-debug.log*
 yarn-error.log*
 
 # File nội bộ / bản thiết kế AI
+ChangeName.md
 FLASH_BLUEPRINT.md
+GiaiTrinhCauTruc.md
 injector.js
 payload.js
 

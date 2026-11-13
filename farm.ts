@@ -1,7 +1,7 @@
 import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import { HieuTool, TaskType, ensureDiscordToken } from './src/engine';
+import { Rain2, TaskType, ensureDiscordToken } from './src/engine';
 
 function enterAltScreen() {
     process.stdout.write('\x1b[?1049h\x1b[?25l');
@@ -17,11 +17,11 @@ process.on('SIGINT', () => {
 });
 
 const BANNER = `
-${chalk.hex('#FF6B6B')('   __  __')}${chalk.hex('#FF8E53')('   ____')}${chalk.hex('#FECA57')('   ______')}${chalk.hex('#48DBFB')('   __  __')}${chalk.hex('#FF9FF3')('   ______')}${chalk.hex('#54A0FF')('   ____')}${chalk.hex('#5F27CD')('    ____')}${chalk.hex('#01A3A4')('    __ ')}
-${chalk.hex('#FF6B6B')('  / / / /')}${chalk.hex('#FF8E53')('  /  _/')}${chalk.hex('#FECA57')('  / ____/')}${chalk.hex('#48DBFB')('  / / / /')}${chalk.hex('#FF9FF3')(' /_  __/')}${chalk.hex('#54A0FF')('  / __ \\')}${chalk.hex('#5F27CD')('  / __ \\')}${chalk.hex('#01A3A4')('  / / ')}
-${chalk.hex('#FF6B6B')(' / /_/ /')}${chalk.hex('#FF8E53')('  / /')}${chalk.hex('#FECA57')('   / __/')}${chalk.hex('#48DBFB')('   / / / /')}${chalk.hex('#FF9FF3')('   / /')}${chalk.hex('#54A0FF')('   / / / /')}${chalk.hex('#5F27CD')(' / / / /')}${chalk.hex('#01A3A4')(' / /  ')}
-${chalk.hex('#FF6B6B')('/ __  /')}${chalk.hex('#FF8E53')('  / /')}${chalk.hex('#FECA57')('   / /___')}${chalk.hex('#48DBFB')('  / /_/ /')}${chalk.hex('#FF9FF3')('   / /')}${chalk.hex('#54A0FF')('   / /_/ /')}${chalk.hex('#5F27CD')(' / /_/ /')}${chalk.hex('#01A3A4')(' / /___')}
-${chalk.hex('#FF6B6B')('/_/ /_/')}${chalk.hex('#FF8E53')('  \\___/')}${chalk.hex('#FECA57')('  \\____/')}${chalk.hex('#48DBFB')('   \\____/')}${chalk.hex('#FF9FF3')('   /_/')}${chalk.hex('#54A0FF')('    \\____/')}${chalk.hex('#5F27CD')(' \\____/')}${chalk.hex('#01A3A4')('  /_____/')}
+${chalk.hex('#FF6B6B')('    ____  ')}${chalk.hex('#FF8E53')('    ___   ')}${chalk.hex('#FECA57')('   ____ ')}${chalk.hex('#48DBFB')('    _   __')}${chalk.hex('#FF9FF3')('   ___  ')}
+${chalk.hex('#FF6B6B')('   / __ \\ ')}${chalk.hex('#FF8E53')('   /   |  ')}${chalk.hex('#FECA57')('  /  _/ ')}${chalk.hex('#48DBFB')('   / | / /')}${chalk.hex('#FF9FF3')('  |__ \\ ')}
+${chalk.hex('#FF6B6B')('  / /_/ / ')}${chalk.hex('#FF8E53')('  / /| |  ')}${chalk.hex('#FECA57')('  / /   ')}${chalk.hex('#48DBFB')('  /  |/ / ')}${chalk.hex('#FF9FF3')('  __/ / ')}
+${chalk.hex('#FF6B6B')(' / _, _/  ')}${chalk.hex('#FF8E53')(' / ___ |  ')}${chalk.hex('#FECA57')('_/ /    ')}${chalk.hex('#48DBFB')(' / /|  /  ')}${chalk.hex('#FF9FF3')(' / __/  ')}
+${chalk.hex('#FF6B6B')('/_/ |_|   ')}${chalk.hex('#FF8E53')('/_/  |_|  ')}${chalk.hex('#FECA57')('/___/   ')}${chalk.hex('#48DBFB')('/_/ |_/   ')}${chalk.hex('#FF9FF3')('/____/  ')}
 `;
 
 const DIVIDER = chalk.hex('#2C3E50')('━'.repeat(90));
@@ -240,7 +240,7 @@ function report(user: { username: string; id: string }, results: PromiseSettledR
 
 async function main() {
     const token = await ensureDiscordToken();
-    const app = new HieuTool(token);
+    const app = new Rain2(token);
 
     app.once(
         GatewayDispatchEvents.Ready,

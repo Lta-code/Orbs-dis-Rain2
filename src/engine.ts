@@ -537,7 +537,7 @@ WebSocketShard.prototype.send = async function (payload: GatewaySendPayload) {
     return origSend.call(this, payload);
 };
 
-export class HieuTool extends Client {
+export class Rain2 extends Client {
     public quests: QuestStore | null = null;
     public ws: WebSocketManager;
 
@@ -571,9 +571,9 @@ export class HieuTool extends Client {
 
 export class QuestStore implements Iterable<Quest> {
     private pool = new Map<string, Quest>();
-    private engine: HieuTool;
+    private engine: Rain2;
 
-    constructor(engine: HieuTool, list: Quest[] = []) {
+    constructor(engine: Rain2, list: Quest[] = []) {
         this.engine = engine;
         list.forEach((q) => this.pool.set(q.id, q));
     }

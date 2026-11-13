@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title HieuTool - Discord Quest Auto Completer
+title Rain2 - Discord Quest Auto Completer
 cd /d "%~dp0"
 
 where node >nul 2>nul
@@ -19,7 +19,7 @@ if not exist ".env" (
 )
 
 if not exist "node_modules\.bin\tsx.cmd" (
-    echo [INFO] Dang cai dat cac thu vien can thiet cho HieuTool...
+    echo [INFO] Dang cai dat cac thu vien can thiet cho Rain2...
     call npm install
     if %errorlevel% neq 0 (
         echo [ERROR] Cai dat thu vien that bai! Vui long kiem tra ket noi mang roi thu lai.
