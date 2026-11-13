@@ -560,7 +560,11 @@ export class Rain2 extends Client {
 
     async loadQuests(): Promise<QuestStore> {
         const res = (await this.rest.get('/quests/@me')) as QuestsApiResponse;
-        this.quests = new QuestStore(this, (res.quests || []).map((q) => Quest.from(q)));
+        this.quests = new QuestStore(
+            this,
+            (res.quests || []).map((q) => Quest.from(q)),
+            res.quest_enrollment_blocked_until ?? null
+        );
         return this.quests;
     }
 
@@ -572,9 +576,11 @@ export class Rain2 extends Client {
 export class QuestStore implements Iterable<Quest> {
     private pool = new Map<string, Quest>();
     private engine: Rain2;
+    public enrollmentBlockedUntil: string | null = null;
 
-    constructor(engine: Rain2, list: Quest[] = []) {
+    constructor(engine: Rain2, list: Quest[] = [], enrollmentBlockedUntil: string | null = null) {
         this.engine = engine;
+        this.enrollmentBlockedUntil = enrollmentBlockedUntil;
         list.forEach((q) => this.pool.set(q.id, q));
     }
 
@@ -594,6 +600,12 @@ export class QuestStore implements Iterable<Quest> {
     }
 
     async enroll(questId: string) {
+        if (this.enrollmentBlockedUntil) {
+            const blockedMs = new Date(this.enrollmentBlockedUntil).getTime();
+            if (!Number.isNaN(blockedMs) && blockedMs > Date.now()) {
+                throw new Error('Enrollment rate-limited');
+            }
+        }
         const res = await this.engine.rest.post(`/quests/${questId}/enroll`, {
             body: { location: 11, is_targeted: false, metadata_raw: null },
         });
@@ -836,12 +848,18 @@ export class QuestStore implements Iterable<Quest> {
     }
 
     private async executeStreamWatch(quest: Quest, onProgress?: (remainingSec: number) => void) {
-        const enrolledAt = new Date(quest.userStatus?.enrolled_at as any).getTime();
         const target = quest.getTarget();
         let done = quest.getProgress();
+        const rawEnrolledMs = new Date(quest.userStatus?.enrolled_at as any).getTime();
+        const safeAnchorMs = Date.now() - done * 1000;
+        const enrolledAt = Number.isNaN(rawEnrolledMs)
+            ? safeAnchorMs
+            : Math.max(rawEnrolledMs, safeAnchorMs);
 
-        while (done < target) {
-            const elapsed = Math.floor((Date.now() - enrolledAt) / 1000);
+        let consecutiveErrors = 0;
+
+        while (!quest.isCompleted() && done < target) {
+            const elapsed = Math.max(1, Math.floor((Date.now() - enrolledAt) / 1000));
             const next = Math.min(done + 30, target);
 
             const res = (await this.engine.rest
@@ -850,11 +868,23 @@ export class QuestStore implements Iterable<Quest> {
                 })
                 .catch(() => null)) as any;
 
-            done = Math.min(target, next);
-            onProgress?.(Math.max(0, target - done));
-            if (res?.completed_at) break;
+            if (res) {
+                consecutiveErrors = 0;
+                quest.refreshStatus(res);
+                done = Math.max(done, quest.getProgress(), next);
+                onProgress?.(Math.max(0, Math.ceil(target - done)));
+                if (res.completed_at || quest.isCompleted()) break;
+            } else {
+                consecutiveErrors++;
+                if (consecutiveErrors >= 10) {
+                    throw new Error('Stream progress rejected');
+                }
+            }
+
+            if (done >= target) break;
             await this.sleep(30_000);
         }
+        onProgress?.(0);
     }
 
     private async executeMobileGameplay(

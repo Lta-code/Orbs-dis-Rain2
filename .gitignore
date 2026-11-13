@@ -10,7 +10,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# File nội bộ / bản thiết kế AI
+# Thư mục tài liệu nội bộ / bản thiết kế AI
+docs/
 ChangeName.md
 FLASH_BLUEPRINT.md
 GiaiTrinhCauTruc.md

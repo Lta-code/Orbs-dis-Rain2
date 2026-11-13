@@ -1,19 +1,50 @@
 import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import { Rain2, TaskType, ensureDiscordToken } from './src/engine';
+import { Rain2, Quest, TaskType, ensureDiscordToken } from './src/engine';
+
+let activeApp: Rain2 | null = null;
+let activeTicker: NodeJS.Timeout | null = null;
+let inAltScreen = false;
 
 function enterAltScreen() {
-    process.stdout.write('\x1b[?1049h\x1b[?25l');
+    if (!inAltScreen) {
+        inAltScreen = true;
+        process.stdout.write('\x1b[?1049h\x1b[?25l');
+    }
 }
 
 function exitAltScreen() {
-    process.stdout.write('\x1b[?25h\x1b[?1049l');
+    if (inAltScreen) {
+        inAltScreen = false;
+        process.stdout.write('\x1b[?25h\x1b[?1049l');
+    }
+}
+
+async function shutdownCleanly(exitCode = 0): Promise<never> {
+    if (activeTicker) {
+        clearInterval(activeTicker);
+        activeTicker = null;
+    }
+    exitAltScreen();
+    if (activeApp) {
+        const appToClose = activeApp;
+        activeApp = null;
+        try {
+            await appToClose.ws.destroy();
+        } catch {}
+    }
+    process.exit(exitCode);
 }
 
 process.on('SIGINT', () => {
-    exitAltScreen();
-    process.exit(0);
+    void shutdownCleanly(0);
+});
+process.on('SIGTERM', () => {
+    void shutdownCleanly(0);
+});
+process.on('SIGHUP', () => {
+    void shutdownCleanly(0);
 });
 
 const BANNER = `
@@ -177,7 +208,48 @@ function draw(user: { username: string; id: string }) {
     process.stdout.write('\x1b[H\x1b[J' + frame);
 }
 
-function report(user: { username: string; id: string }, results: PromiseSettledResult<void>[]) {
+function printClaimableBanner(claimable: Quest[]) {
+    if (claimable.length === 0) return;
+    console.log(
+        chalk.hex('#ffeaa7').bold(`\n  🎁 CÓ ${claimable.length} NHIỆM VỤ ĐÃ HOÀN THÀNH 100% — CHỜ BẠN VÀO DISCORD BẤM NHẬN THƯỞNG (CLAIM):`)
+    );
+    const claimTbl = new Table({
+        chars: {
+            top: '─',
+            'top-mid': '┬',
+            'top-left': '┌',
+            'top-right': '┐',
+            bottom: '─',
+            'bottom-mid': '┴',
+            'bottom-left': '└',
+            'bottom-right': '┘',
+            left: '│',
+            'left-mid': '├',
+            mid: '─',
+            'mid-mid': '┼',
+            right: '│',
+            'right-mid': '┤',
+            middle: '│',
+        },
+        head: [
+            chalk.hex('#dfe6e9')('QUEST'),
+            chalk.hex('#dfe6e9')('REWARD'),
+            chalk.hex('#dfe6e9')('ACTION'),
+        ],
+        colWidths: [34, 20, 32],
+        style: { border: ['#00b894'], head: [] },
+    });
+    claimable.forEach((q) => {
+        claimTbl.push([
+            chalk.hex('#55efc4').bold(q.name.slice(0, 32)),
+            chalk.hex('#ffeaa7').bold(q.getRewardLabel()),
+            chalk.hex('#00cec9')('Vào Discord bấm Nhận Thưởng'),
+        ]);
+    });
+    console.log(claimTbl.toString());
+}
+
+function report(results: PromiseSettledResult<void>[], claimable: Quest[]) {
     console.log(`\n${DIVIDER}`);
     console.log(chalk.hex('#ffeaa7').bold('  ★ EXECUTION REPORT'));
     console.log(DIVIDER);
@@ -232,6 +304,7 @@ function report(user: { username: string; id: string }, results: PromiseSettledR
     });
 
     console.log(rptTable.toString());
+    printClaimableBanner(claimable);
     console.log(
         `\n  ${chalk.hex('#a29bfe').bold(`🔮 Current Orbs: ${orbs ?? '?'}`)}  ${chalk.hex('#636e72')('|')}  ${chalk.hex('#00b894').bold('✨ Đã cày xong 100%! Hãy vào Discord bấm Nhận Phần Thưởng (Claim) để an toàn Anti-Cheat.')}`
     );
@@ -241,130 +314,165 @@ function report(user: { username: string; id: string }, results: PromiseSettledR
 async function main() {
     const token = await ensureDiscordToken();
     const app = new Rain2(token);
+    activeApp = app;
+
+    let readyFired = false;
+    const watchdog = setTimeout(async () => {
+        if (readyFired) return;
+        console.error(
+            chalk.red('\n  [ERROR] Quá thời gian kết nối Discord Gateway (30s). Vui lòng kiểm tra mạng hoặc Token!')
+        );
+        await shutdownCleanly(1);
+    }, 30_000);
 
     app.once(
         GatewayDispatchEvents.Ready,
         async ({ data }: { data: { user: { username: string; id: string } } }) => {
+            readyFired = true;
+            clearTimeout(watchdog);
+
             try {
-                const bal = await app.getBalance();
-                orbs = bal.balance;
-            } catch {}
-
-            const store = await app.loadQuests();
-            const pending = store.pending();
-
-            if (pending.length === 0) {
-                process.stdout.write('\x1bc');
-                console.log(BANNER);
-                console.log(DIVIDER);
-                console.log(
-                    `  ${chalk.hex('#74b9ff').bold('⦿')} ${chalk.hex('#ffeaa7').bold(data.user.username)} ${chalk.hex('#636e72')('|')} ${chalk.hex('#a29bfe')(`🔮 ${orbs ?? '?'} Orbs`)}`
-                );
-                console.log(DIVIDER);
-                console.log(chalk.hex('#636e72')('\n  No pending quests. All caught up! ✨\n'));
-
-                const allQuests = store.all();
-                if (allQuests.length > 0) {
-                    const summaryTbl = new Table({
-                        chars: {
-                            top: '─',
-                            'top-mid': '┬',
-                            'top-left': '┌',
-                            'top-right': '┐',
-                            bottom: '─',
-                            'bottom-mid': '┴',
-                            'bottom-left': '└',
-                            'bottom-right': '┘',
-                            left: '│',
-                            'left-mid': '├',
-                            mid: '─',
-                            'mid-mid': '┼',
-                            right: '│',
-                            'right-mid': '┤',
-                            middle: '│',
-                        },
-                        head: [
-                            chalk.hex('#dfe6e9')('Quest'),
-                            chalk.hex('#dfe6e9')('Status'),
-                            chalk.hex('#dfe6e9')('Reward'),
-                            chalk.hex('#dfe6e9')('Type'),
-                        ],
-                        colWidths: [30, 14, 18, 10],
-                        style: { border: ['#2d3436'], head: [] },
-                    });
-                    allQuests.forEach((q) => {
-                        let st = '❓';
-                        if (q.isClaimed()) st = chalk.hex('#6c5ce7')('★ Claimed');
-                        else if (q.isCompleted()) st = chalk.hex('#00b894')('✔ Done');
-                        else if (q.isExpired()) st = chalk.hex('#636e72')('⏰ Expired');
-                        else st = chalk.hex('#0984e3')('⏳ Active');
-                        summaryTbl.push([
-                            chalk.hex('#74b9ff')(q.name.slice(0, 28)),
-                            st,
-                            chalk.hex('#fd79a8')(q.getRewardLabel()),
-                            taskIcon(q.detectTaskType()),
-                        ]);
-                    });
-                    console.log(summaryTbl.toString());
-                }
                 try {
-                    await app.ws.destroy();
+                    const bal = await app.getBalance();
+                    orbs = bal.balance;
                 } catch {}
-                process.exit(0);
-            }
 
-            live = pending.map((q) => ({
-                id: q.id,
-                label: q.name,
-                reward: q.getRewardLabel(),
-                countdown: q.getRemaining(),
-                taskIcon: taskIcon(q.detectTaskType()),
-                state: 'working' as RunState,
-            }));
+                const store = await app.loadQuests();
+                const pending = store.pending();
+                const claimable = store.claimable();
 
-            enterAltScreen();
+                if (pending.length === 0) {
+                    process.stdout.write('\x1bc');
+                    console.log(BANNER);
+                    console.log(DIVIDER);
+                    console.log(
+                        `  ${chalk.hex('#74b9ff').bold('⦿')} ${chalk.hex('#ffeaa7').bold(data.user.username)} ${chalk.hex('#636e72')('|')} ${chalk.hex('#a29bfe')(`🔮 ${orbs ?? '?'} Orbs`)}`
+                    );
+                    console.log(DIVIDER);
+                    console.log(chalk.hex('#00b894')('\n  ✔ Không có nhiệm vụ nào cần cày thêm. Tất cả đã hoàn tất! ✨'));
 
-            const ticker = setInterval(() => {
-                live.forEach((q) => {
-                    if (q.state === 'working' && q.countdown > 1) q.countdown--;
-                });
-                draw(data.user);
-            }, 1000);
+                    printClaimableBanner(claimable);
 
-            const results = await Promise.allSettled(
-                pending.map((q, idx) =>
-                    store.execute(q, (rem) => {
-                        if (live[idx]) {
-                            live[idx].countdown = rem;
-                            if (rem <= 0) live[idx].state = 'done';
+                    const allQuests = store.all();
+                    const relevantQuests = allQuests.filter((q) => !q.isExpired() || q.isClaimed() || q.isCompleted());
+                    const hiddenExpiredCount = allQuests.length - relevantQuests.length;
+
+                    if (relevantQuests.length > 0) {
+                        console.log(chalk.hex('#dfe6e9').bold('\n  📋 DANH SÁCH NHIỆM VỤ ĐÃ HOÀN THÀNH / CÒN HIỆU LỰC:'));
+                        const summaryTbl = new Table({
+                            chars: {
+                                top: '─',
+                                'top-mid': '┬',
+                                'top-left': '┌',
+                                'top-right': '┐',
+                                bottom: '─',
+                                'bottom-mid': '┴',
+                                'bottom-left': '└',
+                                'bottom-right': '┘',
+                                left: '│',
+                                'left-mid': '├',
+                                mid: '─',
+                                'mid-mid': '┼',
+                                right: '│',
+                                'right-mid': '┤',
+                                middle: '│',
+                            },
+                            head: [
+                                chalk.hex('#dfe6e9')('Quest'),
+                                chalk.hex('#dfe6e9')('Status'),
+                                chalk.hex('#dfe6e9')('Reward'),
+                                chalk.hex('#dfe6e9')('Type'),
+                            ],
+                            colWidths: [32, 16, 18, 10],
+                            style: { border: ['#2d3436'], head: [] },
+                        });
+                        relevantQuests.forEach((q) => {
+                            let st = '❓';
+                            if (q.isClaimed()) st = chalk.hex('#6c5ce7')('★ Claimed');
+                            else if (q.isCompleted() && !q.isExpired()) st = chalk.hex('#00b894').bold('🎁 Ready Claim');
+                            else if (q.isCompleted()) st = chalk.hex('#00b894')('✔ Done');
+                            else st = chalk.hex('#0984e3')('⏳ Active');
+                            summaryTbl.push([
+                                chalk.hex('#74b9ff')(q.name.slice(0, 30)),
+                                st,
+                                chalk.hex('#fd79a8')(q.getRewardLabel()),
+                                taskIcon(q.detectTaskType()),
+                            ]);
+                        });
+                        console.log(summaryTbl.toString());
+                    }
+
+                    if (hiddenExpiredCount > 0) {
+                        console.log(
+                            chalk.hex('#636e72')(`  (Đã ẩn ${hiddenExpiredCount} nhiệm vụ cũ đã hết hạn để gọn màn hình)`)
+                        );
+                    }
+
+                    await shutdownCleanly(0);
+                    return;
+                }
+
+                live = pending.map((q) => ({
+                    id: q.id,
+                    label: q.name,
+                    reward: q.getRewardLabel(),
+                    countdown: q.getRemaining(),
+                    taskIcon: taskIcon(q.detectTaskType()),
+                    state: 'working' as RunState,
+                }));
+
+                enterAltScreen();
+
+                activeTicker = setInterval(() => {
+                    live.forEach((q) => {
+                        if (q.state === 'working' && q.countdown > 1) q.countdown--;
+                    });
+                    draw(data.user);
+                }, 1000);
+
+                const results = await Promise.allSettled(
+                    pending.map(async (q, idx) => {
+                        const staggerMs = idx * 2500 + Math.floor(Math.random() * 800);
+                        if (staggerMs > 0) {
+                            await new Promise((r) => setTimeout(r, staggerMs));
                         }
+                        await store.execute(q, (rem) => {
+                            if (live[idx]) {
+                                live[idx].countdown = rem;
+                                if (rem <= 0) live[idx].state = 'done';
+                            }
+                        });
                     })
-                )
-            );
+                );
 
-            clearInterval(ticker);
-            exitAltScreen();
+                if (activeTicker) {
+                    clearInterval(activeTicker);
+                    activeTicker = null;
+                }
+                exitAltScreen();
 
-            results.forEach((r, i) => {
-                if (!live[i]) return;
-                live[i].state = r.status === 'fulfilled' ? 'done' : 'failed';
-                live[i].countdown = 0;
-            });
+                results.forEach((r, i) => {
+                    if (!live[i]) return;
+                    live[i].state = r.status === 'fulfilled' ? 'done' : 'failed';
+                    live[i].countdown = 0;
+                });
 
-            draw(data.user);
-            report(data.user, results);
-            try {
-                await app.ws.destroy();
-            } catch {}
-            process.exit(0);
+                draw(data.user);
+                report(results, store.claimable());
+                await shutdownCleanly(0);
+            } catch (err: any) {
+                exitAltScreen();
+                console.error(chalk.red(`\n  [ERROR] ${err?.message || err}`));
+                await shutdownCleanly(1);
+            }
         }
     );
 
     await app.start();
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
     exitAltScreen();
     console.error(chalk.red(`\n  [ERROR] ${err?.message || err}`));
-    process.exit(1);
+    await shutdownCleanly(1);
 });
